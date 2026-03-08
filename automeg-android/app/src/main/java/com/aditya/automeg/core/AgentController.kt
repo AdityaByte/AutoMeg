@@ -1,42 +1,65 @@
 package com.aditya.automeg.core
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.PowerManager
-
-// This mainly handles the core logic about is the agent has to response or not.
-
-// Creating a data-class which has some booleans symbols.
-data class AgentState(
-    val userOnline: Boolean, // Right now we are not focussing on this
-    val screenOn: Boolean, // We are mainly focussing on this if the screen the on dont reply.
-    val appInForeground: Boolean, // No focus
-    val cooldownActive: Boolean // No focus
-)
+import android.util.Log
 
 class AgentController(private val context: Context) {
 
-    private fun initState(): AgentState {
-        val powerManager =
-            context.getSystemService(Context.POWER_SERVICE)
-            as PowerManager
+    private val sharedPrefs = context.getSharedPreferences("automeg_prefs", Context.MODE_PRIVATE)
+    private val COOLDOWN_MILLIS = 30_000L // 30 seconds cooldown
 
+    private fun initState(): AgentState {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+
+        // Checking the screen is on.
         val screenOn = powerManager.isInteractive
+
+        // Checking the app is in foreground or not.
+        var appInForeground = false
+        val runningAppProcesses = activityManager.runningAppProcesses
+        if (runningAppProcesses != null) {
+            val packageName = context.packageName
+            for (processInfo in runningAppProcesses) {
+                if (processInfo.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+                    processInfo.processName == packageName) {
+                    appInForeground = true
+                    break
+                }
+            }
+        }
+
+        val lastResponseTime = sharedPrefs.getLong("last_agent_response_time", 0L)
+        val isCooldownActive = (System.currentTimeMillis() - lastResponseTime) < COOLDOWN_MILLIS
+
         return AgentState(
-            userOnline = false,
             screenOn = screenOn,
-            appInForeground = false,
-            cooldownActive = false
+            appInForeground = appInForeground,
+            cooldownActive = isCooldownActive
         )
     }
 
-    // For every call we have to lookup at the state of the user device and return that state
-    // To this function.
-    fun shouldAgentRespond() : Boolean {
+    fun shouldAgentRespond(): Boolean {
         val state = initState()
 
-        if (state.screenOn) return false
-        if (state.cooldownActive) return false
+        Log.d("AgentController", "State: ScreenOn=${state.screenOn}, Foreground=${state.appInForeground}, Cooldown=${state.cooldownActive}")
 
-        return true
+        // Logic: Only Respond when the user is not using the phone and not in cooldown
+        // TODO: In Production uncomment this
+        // if (state.screenOn) return false // Enabled for production, disabled for testing if needed
+        // if (state.appInForeground) return false
+        // if (state.cooldownActive) return false
+
+        return true // So in each and every case it will return true for dev.
+    }
+
+    /**
+     * Call this whenever the Agent actually sends a reply to start the cooldown timer.
+     */
+    fun markResponseSent() {
+        sharedPrefs.edit().putLong("last_agent_response_time", System.currentTimeMillis()).apply()
+        Log.d("AgentController", "Agent response marked. Cooldown started.")
     }
 }
