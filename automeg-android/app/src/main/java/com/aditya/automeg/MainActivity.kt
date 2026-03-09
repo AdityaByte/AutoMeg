@@ -42,7 +42,8 @@ val SupportedApps = listOf(
     SocialApp("WhatsApp", "com.whatsapp", Color(0xFF25D366)),
     SocialApp("Telegram", "org.telegram.messenger", Color(0xFF0088CC)),
     SocialApp("Instagram", "com.instagram.android", Color(0xFFE1306C)),
-    SocialApp("Messenger", "com.facebook.orca", Color(0xFF0084FF))
+    SocialApp("Messenger", "com.facebook.orca", Color(0xFF0084FF)),
+    SocialApp("Line", "jp.naver.line.android", Color(0xFF00B900))
 )
 
 class MainActivity : ComponentActivity() {
