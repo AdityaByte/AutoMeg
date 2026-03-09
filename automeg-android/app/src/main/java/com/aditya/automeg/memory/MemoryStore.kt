@@ -48,6 +48,11 @@ class MemoryStore(private val context: Context) {
         } ?: emptyList()
     }
 
+    fun clearAllConversations() {
+        val files = context.filesDir.listFiles { _, name -> name.startsWith("conv_") && name.endsWith(".json") }
+        files?.forEach { it.delete() }
+    }
+
     // --- System Log Methods ---
 
     fun addSystemLog(message: String, type: LogType = LogType.INFO) {
@@ -76,5 +81,10 @@ class MemoryStore(private val context: Context) {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    fun clearSystemLogs() {
+        val file = File(context.filesDir, "system_logs.json")
+        if (file.exists()) file.delete()
     }
 }

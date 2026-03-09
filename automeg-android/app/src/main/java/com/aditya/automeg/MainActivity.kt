@@ -14,6 +14,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -27,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +74,7 @@ sealed class Screen(val route: String, val label: String, val icon: androidx.com
     object Logs : Screen("logs", "History", Icons.Default.History)
     object SystemLogs : Screen("system_logs", "Logs", Icons.Default.Terminal)
     object Identity : Screen("identity", "Identity", Icons.Default.Person)
+    object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
 class MainActivity : ComponentActivity() {
@@ -112,41 +116,89 @@ fun MainAppContainer() {
             composable(Screen.Identity.route) {
                 IdentityScreen(sharedPrefs)
             }
+            composable(Screen.Settings.route) {
+                SettingsScreen(sharedPrefs)
+            }
         }
     }
 }
 
 @Composable
 fun AppBottomNavigation(navController: NavHostController) {
-    val items = listOf(Screen.Dashboard, Screen.Logs, Screen.SystemLogs, Screen.Identity)
-    NavigationBar(
-        containerColor = Color.Transparent,
-        tonalElevation = 0.dp,
-        modifier = Modifier.background(Color.Black.copy(alpha = 0.2f))
-    ) {
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route
+    val items = listOf(
+        Screen.Dashboard,
+        Screen.Logs,
+        Screen.SystemLogs,
+        Screen.Identity,
+        Screen.Settings
+    )
 
-        items.forEach { screen ->
-            NavigationBarItem(
-                icon = { Icon(screen.icon, contentDescription = null) },
-                label = { Text(screen.label) },
-                selected = currentRoute == screen.route,
-                onClick = {
-                    navController.navigate(screen.route) {
-                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = ElectricBlue,
-                    selectedTextColor = ElectricBlue,
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray,
-                    indicatorColor = ElectricBlue.copy(alpha = 0.1f)
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(30.dp))
+                .background(Color.Black.copy(alpha = 0.65f))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(30.dp)
                 )
-            )
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { screen ->
+                val selected = currentRoute == screen.route
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) ElectricBlue.copy(alpha = 0.15f) else Color.Transparent)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = screen.icon,
+                            contentDescription = null,
+                            tint = if (selected) ElectricBlue else Color.Gray,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.height(2.dp))
+
+                    Text(
+                        text = screen.label,
+                        fontSize = 9.sp,
+                        color = if (selected) ElectricBlue else Color.Gray,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }
@@ -208,7 +260,7 @@ fun DashboardScreen(sharedPrefs: android.content.SharedPreferences) {
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -406,6 +458,122 @@ fun IdentityScreen(sharedPrefs: android.content.SharedPreferences) {
             fontSize = 12.sp,
             color = ElectricBlue.copy(alpha = 0.7f)
         )
+    }
+}
+
+@Composable
+fun SettingsScreen(sharedPrefs: android.content.SharedPreferences) {
+    val context = LocalContext.current
+    val memoryStore = remember { MemoryStore(context) }
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Text("Settings", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("Manage app data and configurations", color = Color.Gray, fontSize = 14.sp)
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Data Management Section
+        Text("Data Management", color = ElectricBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        GlassCard {
+            SettingItem(
+                title = "Clear Chat History",
+                subtitle = "Delete all stored conversations",
+                icon = Icons.Default.DeleteSweep,
+                onClick = {
+                    memoryStore.clearAllConversations()
+                    memoryStore.addSystemLog("Chat History Cleared", LogType.WARNING)
+                    Toast.makeText(context, "History Cleared", Toast.LENGTH_SHORT).show()
+                }
+            )
+            Divider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 12.dp))
+            SettingItem(
+                title = "Clear System Logs",
+                subtitle = "Wipe the terminal activity logs",
+                icon = Icons.Default.Terminal,
+                onClick = {
+                    memoryStore.clearSystemLogs()
+                    Toast.makeText(context, "Logs Cleared", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Danger Zone Section
+        Text("Danger Zone", color = Color.Red.copy(alpha = 0.8f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        GlassCard {
+            SettingItem(
+                title = "Reset All Settings",
+                subtitle = "Factory reset all preferences and data",
+                icon = Icons.Default.RestartAlt,
+                tint = Color.Red,
+                onClick = { showResetDialog = true }
+            )
+        }
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Factory Reset?") },
+            text = { Text("This will delete all conversations, logs, identity, and reset all app toggles. This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    sharedPrefs.edit().clear().apply()
+                    memoryStore.clearAllConversations()
+                    memoryStore.clearSystemLogs()
+                    showResetDialog = false
+                    Toast.makeText(context, "App Reset Complete", Toast.LENGTH_LONG).show()
+                }) {
+                    Text("RESET", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("CANCEL")
+                }
+            },
+            containerColor = Color(0xFF1C1C1E),
+            titleContentColor = Color.White,
+            textContentColor = Color.Gray
+        )
+    }
+}
+
+@Composable
+fun SettingItem(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    tint: Color = Color.White
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(tint.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(subtitle, color = Color.Gray, fontSize = 12.sp)
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
     }
 }
 
