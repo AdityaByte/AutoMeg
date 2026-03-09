@@ -11,6 +11,8 @@ import com.aditya.automeg.memory.MemoryManager
 import com.aditya.automeg.core.AgentController
 import com.aditya.automeg.executor.ExecutorEngine
 import com.aditya.automeg.ai.ReplyEngine
+import com.aditya.automeg.memory.MemoryStore
+import com.aditya.automeg.log.LogType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,11 +26,13 @@ class NotificationService : NotificationListenerService() {
     private var agentController: AgentController? = null
     private var executorEngine: ExecutorEngine? = null
     private var replyEngine: ReplyEngine? = null
+    private var memoryStore: MemoryStore? = null
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.d("NotificationListener", "Notification Service Connected")
         initializeEngines()
+        memoryStore?.addSystemLog("Notification Service Connected", LogType.SUCCESS)
     }
 
     private fun initializeEngines() {
@@ -36,6 +40,7 @@ class NotificationService : NotificationListenerService() {
         if (agentController == null) agentController = AgentController(this)
         if (executorEngine == null) executorEngine = ExecutorEngine(this)
         if (replyEngine == null) replyEngine = ReplyEngine(this)
+        if (memoryStore == null) memoryStore = MemoryStore(this)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -94,6 +99,7 @@ class NotificationService : NotificationListenerService() {
             // 3. Start a coroutine for the API call to Groq
             serviceScope.launch {
                 Log.d("AutoMeg", "Requesting Groq reply for $sender: $text")
+                memoryStore?.addSystemLog("Incoming from $sender: Processing...")
                 
                 // 4. REPLY ENGINE: Prepare the reply (now with API call and history)
                 val generatedReply = replyEngine?.prepareReply(sender, text, packageName)
@@ -105,7 +111,12 @@ class NotificationService : NotificationListenerService() {
                     if (success) {
                         agentController?.markResponseSent(generatedReply)
                         Log.d("AutoMeg", "SUCCESS: Groq reply sent to $sender")
+                        memoryStore?.addSystemLog("Reply sent to $sender", LogType.SUCCESS)
+                    } else {
+                        memoryStore?.addSystemLog("Failed to send reply to $sender", LogType.ERROR)
                     }
+                } else {
+                    memoryStore?.addSystemLog("Engine failed to generate reply for $sender", LogType.WARNING)
                 }
             }
         }

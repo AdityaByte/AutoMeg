@@ -1,6 +1,5 @@
 package com.aditya.automeg.executor
 
-import android.app.Notification
 import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent

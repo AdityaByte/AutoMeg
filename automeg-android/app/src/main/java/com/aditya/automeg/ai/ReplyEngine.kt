@@ -23,8 +23,9 @@ class ReplyEngine(private val context: Context) {
     
     private val gson = Gson()
     private val memoryStore = MemoryStore(context)
+    private val sharedPrefs = context.getSharedPreferences("automeg_prefs", Context.MODE_PRIVATE)
     
-    // API key is now securely pulled from BuildConfig (loaded from local.properties)
+    // API key is pulled from BuildConfig (loaded from local.properties)
     private val apiKey = BuildConfig.GROQ_API_KEY
 
     /**
@@ -39,18 +40,49 @@ class ReplyEngine(private val context: Context) {
         val conversationId = "${packageName}_${sender}".replace(" ", "_")
         val conversation = memoryStore.readConversation(conversationId)
         
-        // Take last 10 messages for context to maintain conversation flow
+        // Retrieve User Identity provided in the UI
+        val userIdentity = sharedPrefs.getString("user_identity", "No specific identity provided.") ?: ""
+        
+        // Take last 10 messages for context
         val history = conversation.messages.takeLast(10)
         
         val messagesArray = JsonArray()
         
-        // 1. System Prompt to define behavior
+        // System Prompt with User Identity Integration
+        val systemPrompt = """
+        You are AutoMeg, an autonomous messaging agent replying on behalf of the user.
+        
+        Platform: $packageName
+        Recipient: $sender
+        
+        USER IDENTITY (this describes the person you are impersonating):
+        $userIdentity
+        
+        Your task is to respond exactly like the user would in a normal chat conversation.
+        
+        Behavior Rules:
+        1. Write replies as if the user personally typed them.
+        2. Use a casual, natural texting style unless the conversation clearly requires formality.
+        3. Keep responses short (1–2 sentences maximum).
+        4. Avoid sounding like an AI assistant, bot, or customer support agent.
+        5. Do not introduce yourself as AutoMeg or mention automation.
+        6. Use the user's personality, tone, and preferences from the User Identity when replying.
+        7. If the message is simple (greeting, acknowledgement, etc.), reply briefly like a real person would.
+        8. Avoid overly structured sentences or long explanations.
+        9. Only use emojis if they fit the user's personality and the context.
+        10. If unsure what the user would say, give a neutral but polite reply.
+        
+        Conversation Context:
+        Respond only to the latest message while considering the tone of the conversation.
+        
+        Output only the reply text. Do not include explanations.
+        """.trimIndent()
         messagesArray.add(JsonObject().apply {
             addProperty("role", "system")
-            addProperty("content", "You are AutoMeg, a helpful AI assistant. Keep replies concise and natural. Do not use excessive emojis.")
+            addProperty("content", systemPrompt)
         })
 
-        // 2. Add Conversation History
+        // Add Conversation History
         history.forEach { msg ->
             messagesArray.add(JsonObject().apply {
                 addProperty("role", if (msg.direction == "incoming") "user" else "assistant")
@@ -58,7 +90,7 @@ class ReplyEngine(private val context: Context) {
             })
         }
 
-        // 3. Add Current Message (if not already in history)
+        // Current message
         if (history.none { it.text == text }) {
             messagesArray.add(JsonObject().apply {
                 addProperty("role", "user")
