@@ -3,8 +3,11 @@ package com.aditya.automeg
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.text.TextUtils
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aditya.automeg.notification.NotificationService
 import com.aditya.automeg.ui.theme.AutomegandroidTheme
 
 data class SocialApp(
@@ -71,15 +75,20 @@ fun AutoMegDashboard() {
         }
     }
 
-    LaunchedEffect(Unit) {
-        hasNotificationAccess = isNotificationServiceEnabled(context)
-    }
-
     val logs = remember {
         mutableStateListOf(
             "System Initialized",
             "Waiting for activation..."
         )
+    }
+
+    // Check access and nudge service on start
+    LaunchedEffect(Unit) {
+        hasNotificationAccess = isNotificationServiceEnabled(context)
+        if (hasNotificationAccess && isAgentOn) {
+            nudgeNotificationService(context)
+            logs.add("Service Watchdog: Ensuring connectivity...")
+        }
     }
 
     Box(
@@ -154,6 +163,11 @@ fun AutoMegDashboard() {
                             isAgentOn = it
                             sharedPrefs.edit().putBoolean("agent_enabled", it).apply()
                             logs.add(if (it) "Agent Started" else "Agent Stopped")
+                            
+                            if (it && isNotificationServiceEnabled(context)) {
+                                nudgeNotificationService(context)
+                                logs.add("Service refreshed.")
+                            }
                         }
                     )
                 }
@@ -232,6 +246,32 @@ private fun isNotificationServiceEnabled(context: Context): Boolean {
         }
     }
     return false
+}
+
+/**
+ * Forces the system to rebind to the NotificationListenerService.
+ * This fixes the issue where the service stops working until reinstall.
+ */
+private fun nudgeNotificationService(context: Context) {
+    val componentName = ComponentName(context, NotificationService::class.java)
+    
+    // API 24+ rebind attempt
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        NotificationListenerService.requestRebind(componentName)
+    }
+
+    // Toggle component state to force a hard refresh by the system
+    val pm = context.packageManager
+    pm.setComponentEnabledSetting(
+        componentName,
+        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+        PackageManager.DONT_KILL_APP
+    )
+    pm.setComponentEnabledSetting(
+        componentName,
+        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+        PackageManager.DONT_KILL_APP
+    )
 }
 
 @Composable

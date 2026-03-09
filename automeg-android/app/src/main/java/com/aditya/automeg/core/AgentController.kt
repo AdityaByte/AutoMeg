@@ -8,9 +8,8 @@ import android.util.Log
 class AgentController(private val context: Context) {
 
     private val sharedPrefs = context.getSharedPreferences("automeg_prefs", Context.MODE_PRIVATE)
-    private val COOLDOWN_MILLIS = 30_000L // 30 seconds cooldown
-    
-    // Static cache to persist through service reconnections
+    private val COOLDOWN_MILLIS = 2_000L // 2 second cooldown.
+
     companion object {
         private val sentMessagesCache = mutableSetOf<Int>()
     }
@@ -61,10 +60,10 @@ class AgentController(private val context: Context) {
         Log.d("AgentController", "State: ScreenOn=${state.screenOn}, Foreground=${state.appInForeground}, Cooldown=${state.cooldownActive}")
 
         // Logic: For testing, we allow even if foreground or screen on, but respect cooldown
-//        if (state.cooldownActive) return false
-        
+        if (state.cooldownActive) return false
+
         // Uncomment in production:
-        // if (state.appInForeground) return false
+         if (state.appInForeground) return false
 
         return true
     }
