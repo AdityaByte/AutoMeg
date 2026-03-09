@@ -9,23 +9,31 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.aditya.automeg.memory.MemoryManager
 import com.aditya.automeg.core.AgentController
+import com.aditya.automeg.executor.ExecutorEngine
+import com.aditya.automeg.ai.ReplyEngine
 
 class NotificationService : NotificationListenerService() {
 
     private var memoryManager: MemoryManager? = null
     private var agentController: AgentController? = null
+    private var executorEngine: ExecutorEngine? = null
+    private var replyEngine: ReplyEngine? = null
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.d("NotificationListener", "Notification Service Connected")
         if (memoryManager == null) memoryManager = MemoryManager(this)
         if (agentController == null) agentController = AgentController(this)
+        if (executorEngine == null) executorEngine = ExecutorEngine(this)
+        if (replyEngine == null) replyEngine = ReplyEngine(this)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         
         val packageName = sbn?.packageName ?: return
+        if (packageName == applicationContext.packageName) return
+
         val sharedPrefs = getSharedPreferences("automeg_prefs", Context.MODE_PRIVATE)
         val isAgentOn = sharedPrefs.getBoolean("agent_enabled", false)
         val isAppEnabled = sharedPrefs.getBoolean(packageName, false)
@@ -33,6 +41,12 @@ class NotificationService : NotificationListenerService() {
         if (!isAgentOn || !isAppEnabled) return
 
         val extras = sbn.notification.extras
+        
+        val isSummary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+            (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        } else false
+        if (isSummary) return
+
         val title = extras.getString(Notification.EXTRA_TITLE) ?: 
                     extras.getString("android.title") ?: "Unknown"
 
@@ -43,39 +57,48 @@ class NotificationService : NotificationListenerService() {
         }
         
         if (messages != null) {
-            for (messageObj in messages) {
-                if (messageObj is Bundle) {
-                    val msgText = messageObj.getCharSequence("text")?.toString() ?: ""
-                    val msgSender = messageObj.getCharSequence("sender")?.toString() ?: title
-                    if (msgText.isNotEmpty()) {
-                        processIncomingMessage(msgSender, msgText, packageName)
-                    }
+            val lastMessageObj = messages.lastOrNull()
+            if (lastMessageObj is Bundle) {
+                val msgText = lastMessageObj.getCharSequence("text")?.toString() ?: ""
+                val msgSender = lastMessageObj.getCharSequence("sender")?.toString() ?: title
+                if (msgText.isNotEmpty()) {
+                    processIncomingMessage(sbn, msgSender, msgText, packageName)
                 }
             }
         } else {
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: 
                        extras.getCharSequence("android.text")?.toString() ?: ""
             if (text.isNotEmpty()) {
-                processIncomingMessage(title, text, packageName)
+                processIncomingMessage(sbn, title, text, packageName)
             }
         }
     }
 
-    private fun processIncomingMessage(sender: String, text: String, packageName: String) {
+    private fun processIncomingMessage(sbn: StatusBarNotification, sender: String, text: String, packageName: String) {
         if (memoryManager == null) memoryManager = MemoryManager(this)
         if (agentController == null) agentController = AgentController(this)
+        if (executorEngine == null) executorEngine = ExecutorEngine(this)
+        if (replyEngine == null) replyEngine = ReplyEngine(this)
 
-        // 1. Save to Memory
+        // 1. MEMORY MANAGER: Save to Memory
         memoryManager?.saveToMemory(sender, text, packageName)
         
-        // 2. Decide if we should trigger the agent
-        if (agentController?.shouldAgentRespond() == true) {
-            Log.d("AutoMeg", "AGENT TRIGGERED: Preparing to reply to $sender")
+        // 2. AGENT CONTROLLER: Decide if we should trigger the agent (Now with Loop Detection)
+        if (agentController?.shouldAgentRespond(text) == true) {
             
-            // TODO: Call AI Service
-            // agentController?.markResponseSent() // Call this after the AI actually sends the message
-        } else {
-            Log.d("AutoMeg", "AGENT SKIP: Conditions not met (User active or Cooldown)")
+            // 3. REPLY ENGINE: Prepare the reply
+            val generatedReply = replyEngine?.prepareReply(text)
+            
+            if (generatedReply != null) {
+                // 4. EXECUTOR ENGINE: Send the reply
+                val success = executorEngine?.sendReply(sbn, generatedReply) ?: false
+                
+                if (success) {
+                    // Start Cooldown AND Cache the message hash to prevent looping back
+                    agentController?.markResponseSent(generatedReply)
+                    Log.d("AutoMeg", "SUCCESS: Reply sent to $sender")
+                }
+            }
         }
     }
 

@@ -9,6 +9,11 @@ class AgentController(private val context: Context) {
 
     private val sharedPrefs = context.getSharedPreferences("automeg_prefs", Context.MODE_PRIVATE)
     private val COOLDOWN_MILLIS = 30_000L // 30 seconds cooldown
+    
+    // Static cache to persist through service reconnections
+    companion object {
+        private val sentMessagesCache = mutableSetOf<Int>()
+    }
 
     private fun initState(): AgentState {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -41,24 +46,42 @@ class AgentController(private val context: Context) {
         )
     }
 
-    fun shouldAgentRespond(): Boolean {
-        val state = initState()
+    /**
+     * Decision engine to determine if the agent should reply to a specific message.
+     * @param incomingText The text of the message received.
+     */
+    fun shouldAgentRespond(incomingText: String): Boolean {
+        // 1. Loop Prevention: Check if this message is one we just sent
+        if (sentMessagesCache.contains(incomingText.trim().hashCode())) {
+            Log.d("AgentController", "Loop detected: Ignoring our own echo notification.")
+            return false
+        }
 
+        val state = initState()
         Log.d("AgentController", "State: ScreenOn=${state.screenOn}, Foreground=${state.appInForeground}, Cooldown=${state.cooldownActive}")
 
-        // Logic: Only Respond when the user is not using the phone and not in cooldown
-        // TODO: In Production uncomment this
-        // if (state.screenOn) return false // Enabled for production, disabled for testing if needed
+        // Logic: For testing, we allow even if foreground or screen on, but respect cooldown
+//        if (state.cooldownActive) return false
+        
+        // Uncomment in production:
         // if (state.appInForeground) return false
-        // if (state.cooldownActive) return false
 
-        return true // So in each and every case it will return true for dev.
+        return true
     }
 
     /**
-     * Call this whenever the Agent actually sends a reply to start the cooldown timer.
+     * Call this whenever the Agent actually sends a reply.
+     * Starts the cooldown and caches the message hash to prevent loops.
      */
-    fun markResponseSent() {
+    fun markResponseSent(responseText: String) {
+        // Cache the hash of the sent message
+        sentMessagesCache.add(responseText.trim().hashCode())
+        
+        // Keep cache size manageable
+        if (sentMessagesCache.size > 20) {
+            sentMessagesCache.remove(sentMessagesCache.first())
+        }
+
         sharedPrefs.edit().putLong("last_agent_response_time", System.currentTimeMillis()).apply()
         Log.d("AgentController", "Agent response marked. Cooldown started.")
     }
